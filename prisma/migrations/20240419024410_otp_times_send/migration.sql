@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Otp" ADD COLUMN     "timesSend" INTEGER NOT NULL DEFAULT 1;

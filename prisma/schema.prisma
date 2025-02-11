@@ -1,0 +1,195 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearch"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AnalyticQuery {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  query     String
+  areaLink  Area     @relation(fields: [area], references: [area])
+  area      String
+  keywords  String?
+  stage     String?
+  duration  Int?
+  vote      Json[]   @default([])
+  createdAt DateTime @default(now())
+}
+
+model ImageAI {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  area      Area     @relation(fields: [tag], references: [area])
+  tag       String   @unique
+  url       String?
+  createdAt DateTime @default(now())
+}
+
+model Area {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  area          String          @unique
+  createdAt     DateTime        @default(now())
+  F3Data        F3Data[]
+  F4Data        F4Data[]
+  F7Data        F7Data[]
+  ImageAI       ImageAI?
+  AnalyticQuery AnalyticQuery[]
+}
+
+model F3Data {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  areaLink  Area     @relation(fields: [area], references: [area])
+  area      String
+  title     String
+  link      String
+  year      String
+  createdAt DateTime @default(now())
+
+  @@unique([area, title, link, year])
+}
+
+model F4Data {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  areaLink    Area     @relation(fields: [area], references: [area])
+  area        String
+  countryLink Country  @relation(fields: [country], references: [name])
+  country     String
+  data        Int
+  createdAt   DateTime @default(now())
+
+  @@unique([area, country, data])
+}
+
+model F7Data {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  areaLink  Area     @relation(fields: [area], references: [area])
+  area      String
+  news      String?
+  twitter   String?
+  facebook  String?
+  reddit    String?
+  createdAt DateTime @default(now())
+
+  @@unique([area, news, twitter, facebook, reddit])
+}
+
+model Country {
+  id          Int           @id
+  alpha2      String        @unique
+  alpha3      String        @unique
+  name        String        @unique
+  F4Data      F4Data[]
+  Institution Institution[]
+}
+
+model Authors {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  coreCoUkName    String?
+  info            Json?
+  articles        Json?
+  institutionLink Institution? @relation(fields: [institution], references: [name])
+  institution     String?
+  createdAt       DateTime     @default(now())
+}
+
+model Institution {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String    @unique
+  shortName   String?
+  countryLink Country?  @relation(fields: [country], references: [alpha2])
+  country     String?
+  createdAt   DateTime  @default(now())
+  Authors     Authors[]
+}
+
+model User {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String?
+  email              String               @unique
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  Chats              Chats[]
+  Logging            Logging[]
+  Otp                Otp?
+  WriteHistory       WriteHistory[]
+  ContextMenuPrompts ContextMenuPrompts[]
+}
+
+model Otp {
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code     String
+  used     Boolean  @default(false)
+  updateAt DateTime @updatedAt
+  user     User     @relation(fields: [userId], references: [id])
+  userId   String   @unique @db.Uuid
+}
+
+enum ChatType {
+  AI_CHAT
+  ANALYTICS
+}
+
+model Chats {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  model     String   @default("gpt-3.5-turbo")
+  title     String?
+  type      ChatType @default(AI_CHAT)
+  messages  Json?    @db.JsonB
+  User      User     @relation(fields: [userId], references: [id])
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OpenAIPrompts {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  prompt    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum LoggingType {
+  CHATS
+  FILE
+  PAGE
+  IMAGE
+  WRITING
+}
+
+model Logging {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type      LoggingType?
+  request   String?
+  response  String?
+  User      User         @relation(fields: [userId], references: [id])
+  userId    String       @db.Uuid
+  createdAt DateTime     @default(now())
+}
+
+model WriteHistory {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  request   Json?    @db.JsonB
+  response  String?
+  User      User     @relation(fields: [userId], references: [id])
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+}
+
+model ContextMenuPrompts {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title     String
+  prompt    String
+  isSystem  Boolean  @default(false)
+  User      User?    @relation(fields: [userId], references: [id])
+  userId    String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
