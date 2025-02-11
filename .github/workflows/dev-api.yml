@@ -1,123 +1,123 @@
-name: Scisets dev api deploy to Amazon ECS
+# name: Scisets dev api deploy to Amazon ECS
 
-on:
-  push:
-    branches:
-      - main
+# on:
+#   push:
+#     branches:
+#       - main
 
-concurrency:
-  group: ${{ github.ref }}
+# concurrency:
+#   group: ${{ github.ref }}
 
-env:
-  AWS_REGION: us-east-1
-  ECR_REPOSITORY: scisets-api-dev
-  ECS_SERVICE: scisets-api-dev
-  ECS_CLUSTER: Scisets-dev-cluster
-  ECS_TASK_DEFINITION: .aws/scisets-dev-api-task-definition.json
-  CONTAINER_NAME: api
-  AWS_INSTANCE_SG_ID: sg-08c896a45e5d59c08
+# env:
+#   AWS_REGION: us-east-1
+#   ECR_REPOSITORY: scisets-api-dev
+#   ECS_SERVICE: scisets-api-dev
+#   ECS_CLUSTER: Scisets-dev-cluster
+#   ECS_TASK_DEFINITION: .aws/scisets-dev-api-task-definition.json
+#   CONTAINER_NAME: api
+#   AWS_INSTANCE_SG_ID: sg-08c896a45e5d59c08
 
-permissions:
-  contents: read
+# permissions:
+#   contents: read
 
-jobs:
-  deploy:
-    name: Deploy
-    runs-on: ubuntu-latest
-    environment: production
+# jobs:
+#   deploy:
+#     name: Deploy
+#     runs-on: ubuntu-latest
+#     environment: production
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v3
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+#       - name: Configure AWS credentials
+#         uses: aws-actions/configure-aws-credentials@v1
+#         with:
+#           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
+#       - name: Login to Amazon ECR
+#         id: login-ecr
+#         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: get runner ip addresses
-        id: ip
-        uses: haythem/public-ip@v1.2
+#       - name: get runner ip addresses
+#         id: ip
+#         uses: haythem/public-ip@v1.2
 
-      - name: whitelist runner ip address
-        run: |
-          aws ec2 authorize-security-group-ingress \
-            --group-id $AWS_INSTANCE_SG_ID \
-            --protocol tcp \
-            --port 5432 \
-            --cidr ${{ steps.ip.outputs.ipv4 }}/32
+#       - name: whitelist runner ip address
+#         run: |
+#           aws ec2 authorize-security-group-ingress \
+#             --group-id $AWS_INSTANCE_SG_ID \
+#             --protocol tcp \
+#             --port 5432 \
+#             --cidr ${{ steps.ip.outputs.ipv4 }}/32
 
-      - name: Use Node.js
-        uses: actions/setup-node@v1
-        with:
-          node-version: 20.9
+#       - name: Use Node.js
+#         uses: actions/setup-node@v1
+#         with:
+#           node-version: 20.9
 
-      - name: Install dependencies
-        run: npm install
+#       - name: Install dependencies
+#         run: npm install
 
-      - name: Build
-        run: npm run build
+#       - name: Build
+#         run: npm run build
 
-      - name: Run production migration
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          npx prisma migrate deploy 2> migration_out.txt
-          npx prisma db seed
+#       - name: Run production migration
+#         env:
+#           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+#         run: |
+#           npx prisma migrate deploy 2> migration_out.txt
+#           npx prisma db seed
 
-      - name: Migration rollback
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        if: failure()
-        run: |
-          cat migration_out.txt
-          WRONG_MIGRATION=$(cat migration_out.txt | grep "Migration name:" | sed 's/Migration name://')
-          echo $WRONG_MIGRATION
-          npx prisma migrate resolve --rolled-back $WRONG_MIGRATION
+#       - name: Migration rollback
+#         env:
+#           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+#         if: failure()
+#         run: |
+#           cat migration_out.txt
+#           WRONG_MIGRATION=$(cat migration_out.txt | grep "Migration name:" | sed 's/Migration name://')
+#           echo $WRONG_MIGRATION
+#           npx prisma migrate resolve --rolled-back $WRONG_MIGRATION
 
-      - name: Cleare deps
-        run: rm -rf node_modules/ dist/
+#       - name: Cleare deps
+#         run: rm -rf node_modules/ dist/
 
-      - name: Build, tag, and push image to Amazon ECR
-        id: build-image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          # Build a docker container and
-          # push it to ECR so that it can
-          # be deployed to ECS.
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+#       - name: Build, tag, and push image to Amazon ECR
+#         id: build-image
+#         env:
+#           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+#           IMAGE_TAG: ${{ github.sha }}
+#         run: |
+#           # Build a docker container and
+#           # push it to ECR so that it can
+#           # be deployed to ECS.
+#           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+#           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+#           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Fill in the new image ID in the Amazon ECS task definition
-        id: task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: ${{ env.ECS_TASK_DEFINITION }}
-          container-name: ${{ env.CONTAINER_NAME }}
-          image: ${{ steps.build-image.outputs.image }}
+#       - name: Fill in the new image ID in the Amazon ECS task definition
+#         id: task-def
+#         uses: aws-actions/amazon-ecs-render-task-definition@v1
+#         with:
+#           task-definition: ${{ env.ECS_TASK_DEFINITION }}
+#           container-name: ${{ env.CONTAINER_NAME }}
+#           image: ${{ steps.build-image.outputs.image }}
 
-      - name: Deploy Amazon ECS task definition
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-        with:
-          task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ env.ECS_SERVICE }}
-          cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: true
+#       - name: Deploy Amazon ECS task definition
+#         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+#         with:
+#           task-definition: ${{ steps.task-def.outputs.task-definition }}
+#           service: ${{ env.ECS_SERVICE }}
+#           cluster: ${{ env.ECS_CLUSTER }}
+#           wait-for-service-stability: true
 
-      - name: revoke runner ip address
-        if: always()
-        run: |
-          aws ec2 revoke-security-group-ingress \
-            --group-id $AWS_INSTANCE_SG_ID \
-            --protocol tcp \
-            --port 5432 \
-            --cidr ${{ steps.ip.outputs.ipv4 }}/32
+#       - name: revoke runner ip address
+#         if: always()
+#         run: |
+#           aws ec2 revoke-security-group-ingress \
+#             --group-id $AWS_INSTANCE_SG_ID \
+#             --protocol tcp \
+#             --port 5432 \
+#             --cidr ${{ steps.ip.outputs.ipv4 }}/32
